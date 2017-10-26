@@ -1,0 +1,116 @@
+---
+name: <%= properties.name || "bat" %>
+director_uuid: <%= properties.uuid %>
+
+releases:
+  - name: bat
+    version: <%= properties.release || "latest" %>
+
+compilation:
+  workers: <%= properties.compilation_workers || 2 %>
+  network: default
+  reuse_compilation_vms: true
+  cloud_properties:
+    instance_type: ecs.mn4.large
+    instance_name: bosh-director-bats
+    instance_role: ""
+    availability_zone: <%= properties.availability_zone %>
+    instance_charge_type: <%= properties.instance_charge_type || "PostPaid" %>
+    system_disk:
+      size: <%= properties.system_disk.size || "51_200" %>
+      type: <%= properties.system_disk.type || "cloud_efficiency" %>
+    <% if properties.ephemeral_disk %>
+    ephemeral_disk:
+      size: <%= properties.ephemeral_disk.size || "51_200" %>
+      type: <%= properties.ephemeral_disk.type || "cloud_efficiency" %>
+    <% end %>
+
+update:
+  canaries: <%= properties.canaries || 1 %>
+  canary_watch_time: 3000-90000
+  update_watch_time: 3000-90000
+  max_in_flight: <%= properties.max_in_flight || 1 %>
+
+networks:
+  <% properties.networks.each do |network| %>
+  - name: <%= network.name %>
+    type: <%= network.type %>
+    subnets:
+      <% network.subnets.each do |subnet| %>
+      - range: <%= subnet.range %>
+        static: [<%= subnet.static %>]
+        gateway: <%= subnet.gateway %>
+        dns: <%= p('dns').inspect %>
+        cloud_properties:
+          internet_charge_type: <%= subnet.cloud_properties.internet_charge_type || "PayByTraffic" %>
+          security_group_id: <%= subnet.cloud_properties.security_group_id %>
+          vswitch_id: <%= subnet.cloud_properties.vswitch_id %>
+      <% end %>
+  <% end %>
+  - name: static
+    type: vip
+
+resource_pools:
+  - name: common
+    network: default
+    stemcell:
+      name: <%= properties.stemcell.name %>
+      version: "<%= properties.stemcell.version %>"
+    cloud_properties:
+      instance_type: ecs.mn4.large
+      instance_name: bosh-director-bats
+      instance_role: ""
+      availability_zone: <%= properties.availability_zone %>
+      instance_charge_type: <%= properties.instance_charge_type || "PostPaid" %>
+      system_disk:
+        size: <%= properties.system_disk.size || "51_200" %>
+        type: <%= properties.system_disk.type || "cloud_efficiency" %>
+      <% if properties.ephemeral_disk %>
+      ephemeral_disk:
+        size: <%= properties.ephemeral_disk.size || "51_200" %>
+        type: <%= properties.ephemeral_disk.type || "cloud_efficiency" %>
+      <% end %>
+    <% if properties.password %>
+    env:
+      bosh:
+        password: <%= properties.password %>
+    <% end %>
+
+jobs:
+  - name: <%= properties.job || "batlight" %>
+    templates: <% (properties.templates || ["batlight"]).each do |template| %>
+    - name: <%= template %>
+    <% end %>
+    instances: <%= properties.instances %>
+    resource_pool: common
+    <% if properties.persistent_disk %>
+    persistent_disk: <%= properties.persistent_disk %>
+    <% end %>
+    networks:
+    <% properties.job_networks.each_with_index do |network, i| %>
+      - name: <%= network.name %>
+        <% if i == 0 %>
+        default: [dns, gateway]
+        static_ips:
+        <% properties.instances.times do |i| %>
+          - <%= properties.static_ips[i] %>
+        <% end %>
+        <% end %>
+    <% end %>
+    <% if properties.use_vip %>
+      - name: static
+        static_ips:
+          - <%= properties.vip %>
+    <% end %>
+
+properties:
+  batlight:
+    <% if properties.batlight.fail %>
+    fail: <%= properties.batlight.fail %>
+    <% end %>
+    <% if properties.batlight.missing %>
+    missing: <%= properties.batlight.missing %>
+    <% end %>
+    <% if properties.batlight.drain_type %>
+    drain_type: <%= properties.batlight.drain_type %>
+    <% end %>
